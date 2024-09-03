@@ -1,0 +1,10 @@
+# Ignore the input folder
+/input/
+
+# Ignore .env file
+.env
+
+# Virtual environment
+venv/
+env/
+.venv/
