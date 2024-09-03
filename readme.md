@@ -4,6 +4,8 @@ This will take any audio file and give you a transcription of it using the Azure
 
 Why use this? it's way cheaper than using a subscription service. 
 
+It takes about 0.5 seconds per second of audio. 
+
 ## Use
 
 Get your azure credentials (~5 minutes)
