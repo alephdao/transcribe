@@ -3,3 +3,4 @@ python-dotenv==1.0.1
 streamlit==1.38.0
 pydub
 moviepy
+ffmpeg-python
