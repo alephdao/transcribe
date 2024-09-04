@@ -14,8 +14,8 @@ service_region = os.getenv("AZURE_SPEECH_REGION")
 def is_valid_audio_file(file):
     """Check if the file is a valid audio file."""
     try:
-        with open(file.name, "rb") as f:
-            header = f.read(12)
+        # Read the first 12 bytes of the file
+        header = file.getvalue()[:12]
         # Check for WAV header
         if header.startswith(b'RIFF') and header[8:12] == b'WAVE':
             return True
@@ -28,15 +28,11 @@ def is_valid_audio_file(file):
         st.error(f"Error validating file: {str(e)}")
         return False
 
-def transcribe_audio(audio_file, progress_bar):
+def transcribe_audio(audio_data, progress_bar):
     """
     Transcribe the audio file using Azure Speech-to-Text.
     """
     try:
-        # Read the entire file into memory
-        with open(audio_file, "rb") as f:
-            audio_data = f.read()
-
         # Set up the speech config
         speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=service_region)
         
@@ -97,16 +93,13 @@ def main():
             st.error("The uploaded file does not appear to be a valid audio file.")
             return
 
-        # Save the uploaded file temporarily
-        with open(uploaded_file.name, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-
         if st.button("Transcribe"):
             progress_bar = st.progress(0)
             status_text = st.empty()
 
             with st.spinner("Transcribing..."):
-                transcription = transcribe_audio(uploaded_file.name, progress_bar)
+                audio_data = uploaded_file.getvalue()
+                transcription = transcribe_audio(audio_data, progress_bar)
             
             progress_bar.progress(1.0)
             status_text.text("Transcription completed!")
@@ -119,9 +112,6 @@ def main():
                 file_name="transcription.txt",
                 mime="text/plain"
             )
-
-        # Clean up the temporary file
-        os.remove(uploaded_file.name)
 
 if __name__ == "__main__":
     main()
