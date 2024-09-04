@@ -5,19 +5,32 @@ import time
 from pydub import AudioSegment
 import tempfile
 
-# Remove the dotenv import and load_dotenv() call
-
-# Remove these lines:
-# speech_key = os.getenv("AZURE_SPEECH_KEY")
-# service_region = os.getenv("AZURE_SPEECH_REGION")
-
 try:
     import moviepy.editor as mp
     MOVIEPY_AVAILABLE = True
 except ImportError:
     MOVIEPY_AVAILABLE = False
 
-# ... [keep all other functions as they are] ...
+def get_audio_duration(file_path):
+    """Get the duration of an audio file in seconds."""
+    audio = AudioSegment.from_file(file_path)
+    return len(audio) / 1000  # Convert milliseconds to seconds
+
+def extract_audio_from_video(video_path):
+    """Extract audio from video file and save as temporary WAV file."""
+    if not MOVIEPY_AVAILABLE:
+        raise ImportError("moviepy is not installed. Cannot extract audio from video.")
+    temp_audio_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav').name
+    video = mp.VideoFileClip(video_path)
+    video.audio.write_audiofile(temp_audio_file)
+    return temp_audio_file
+
+def convert_to_wav(audio_file):
+    """Convert audio file to WAV format."""
+    temp_wav_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav').name
+    sound = AudioSegment.from_file(audio_file)
+    sound.export(temp_wav_file, format="wav")
+    return temp_wav_file
 
 def transcribe_audio(audio_file, progress_bar, speech_key, service_region):
     """
@@ -33,7 +46,66 @@ def transcribe_audio(audio_file, progress_bar, speech_key, service_region):
     Returns:
     str: The transcribed text or an error message.
     """
-    # ... [keep the rest of the function as it is, just use the passed speech_key and service_region] ...
+    temp_wav_file = None
+    try:
+        # Handle different file types
+        if audio_file.lower().endswith(('.mp3', '.m4a')):
+            temp_wav_file = convert_to_wav(audio_file)
+            wav_file_to_transcribe = temp_wav_file
+        elif audio_file.lower().endswith('.mp4'):
+            if not MOVIEPY_AVAILABLE:
+                return "Error: moviepy is not installed. Cannot process video files."
+            temp_wav_file = extract_audio_from_video(audio_file)
+            wav_file_to_transcribe = temp_wav_file
+        else:
+            wav_file_to_transcribe = audio_file
+
+        # Get audio duration
+        audio_duration = get_audio_duration(wav_file_to_transcribe)
+
+        # Set up the speech config
+        speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=service_region)
+        audio_config = speechsdk.audio.AudioConfig(filename=wav_file_to_transcribe)
+
+        # Create a speech recognizer and start recognition
+        speech_recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
+
+        # Set up the complete callback
+        done = False
+        all_results = []
+
+        def stop_cb(evt):
+            """Callback to stop continuous recognition upon receiving an event `evt`"""
+            nonlocal done
+            done = True
+
+        # Connect callbacks to the events fired by the speech recognizer
+        speech_recognizer.recognized.connect(lambda evt: all_results.append(evt.result.text))
+        speech_recognizer.session_stopped.connect(stop_cb)
+        speech_recognizer.canceled.connect(stop_cb)
+
+        # Start continuous speech recognition
+        speech_recognizer.start_continuous_recognition()
+
+        start_time = time.time()
+        while not done:
+            time.sleep(0.5)
+            elapsed_time = time.time() - start_time
+            progress = min(elapsed_time / audio_duration, 1.0)
+            progress_bar.progress(progress)
+
+        speech_recognizer.stop_continuous_recognition()
+
+        transcription = ' '.join(all_results)
+        
+    except Exception as e:
+        transcription = f"An error occurred: {str(e)}"
+    finally:
+        # Clean up the temporary WAV file if it was created
+        if temp_wav_file and os.path.exists(temp_wav_file):
+            os.remove(temp_wav_file)
+
+    return transcription
 
 def main():
     st.title("Audio/Video Transcription App")
