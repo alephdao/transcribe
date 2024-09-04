@@ -1,9 +1,8 @@
 import streamlit as st
-import azure.cognitiveservices.speech as speechsdk
 import os
+import requests
 import time
 from dotenv import load_dotenv
-import io
 
 # Load environment variables from .env file
 load_dotenv()
@@ -11,68 +10,46 @@ load_dotenv()
 speech_key = os.getenv("AZURE_SPEECH_KEY")
 service_region = os.getenv("AZURE_SPEECH_REGION")
 
-def is_valid_audio_file(file):
-    """Check if the file is a valid audio file."""
-    try:
-        # Read the first 12 bytes of the file
-        header = file.getvalue()[:12]
-        # Check for WAV header
-        if header.startswith(b'RIFF') and header[8:12] == b'WAVE':
-            return True
-        # Check for MP3 header
-        if header.startswith(b'\xFF\xFB') or header.startswith(b'ID3'):
-            return True
-        return False
-    except Exception as e:
-        st.error(f"Error validating file: {str(e)}")
-        return False
+def get_token():
+    headers = {
+        'Ocp-Apim-Subscription-Key': speech_key
+    }
+    response = requests.post(f'https://{service_region}.api.cognitive.microsoft.com/sts/v1.0/issueToken', headers=headers)
+    return response.text
 
 def transcribe_audio(audio_data, progress_bar):
     """
-    Transcribe the audio file using Azure Speech-to-Text.
+    Transcribe the audio file using Azure Speech-to-Text REST API.
     """
     try:
-        # Set up the speech config
-        speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=service_region)
-        speech_config.speech_recognition_language="en-US"
-        
-        # Use PushAudioInputStream
-        push_stream = speechsdk.audio.PushAudioInputStream()
-        audio_config = speechsdk.audio.AudioConfig(stream=push_stream)
+        # Get the access token
+        access_token = get_token()
 
-        # Create a speech recognizer and start recognition
-        speech_recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'audio/mp3'  # Adjust if needed for WAV files
+        }
 
-        # Set up the complete callback
-        done = False
-        all_results = []
+        params = {
+            'language': 'en-US',
+            'format': 'detailed'
+        }
 
-        def stop_cb(evt):
-            nonlocal done
-            done = True
+        # Make the API request
+        response = requests.post(
+            f'https://{service_region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1',
+            params=params,
+            headers=headers,
+            data=audio_data
+        )
 
-        def recognized_cb(evt):
-            all_results.append(evt.result.text)
-            progress_bar.progress(min(len(all_results) / 20, 1.0))  # Assume max 20 utterances
+        if response.status_code == 200:
+            result = response.json()
+            transcription = result['DisplayText'] if 'DisplayText' in result else "No transcription available."
+        else:
+            transcription = f"Error: {response.status_code} - {response.text}"
 
-        # Connect callbacks
-        speech_recognizer.recognized.connect(recognized_cb)
-        speech_recognizer.session_stopped.connect(stop_cb)
-        speech_recognizer.canceled.connect(stop_cb)
-
-        # Start continuous speech recognition
-        speech_recognizer.start_continuous_recognition()
-
-        # Push audio data to the stream
-        push_stream.write(audio_data)
-        push_stream.close()
-
-        while not done:
-            time.sleep(0.5)
-
-        speech_recognizer.stop_continuous_recognition()
-
-        transcription = ' '.join(all_results)
+        progress_bar.progress(1.0)
         
     except Exception as e:
         transcription = f"An error occurred: {str(e)}"
@@ -89,10 +66,6 @@ def main():
     uploaded_file = st.file_uploader("Choose an audio file", type=["wav", "mp3"])
 
     if uploaded_file is not None:
-        if not is_valid_audio_file(uploaded_file):
-            st.error("The uploaded file does not appear to be a valid audio file.")
-            return
-
         if st.button("Transcribe"):
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -101,7 +74,6 @@ def main():
                 audio_data = uploaded_file.getvalue()
                 transcription = transcribe_audio(audio_data, progress_bar)
             
-            progress_bar.progress(1.0)
             status_text.text("Transcription completed!")
             st.success("Transcription completed!")
             st.text_area("Transcription", transcription, height=300)
