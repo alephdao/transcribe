@@ -116,7 +116,7 @@ def main():
 
     # Check if API keys are provided
     if not speech_key or not service_region:
-        st.warning("Please enter your Azure Speech to Text credentials to use the app.")
+        st.warning("Please enter your Azure Speech-to-Text credentials to use the app. Your credentials are not stored, and they will be cleared when you close or refresh your browser session.")
         return
 
     # File uploader
