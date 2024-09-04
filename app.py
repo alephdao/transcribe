@@ -4,20 +4,12 @@ import os
 import time
 from dotenv import load_dotenv
 import io
-from pydub import AudioSegment
 
 # Load environment variables from .env file
 load_dotenv()
 
 speech_key = os.getenv("AZURE_SPEECH_KEY")
 service_region = os.getenv("AZURE_SPEECH_REGION")
-
-def convert_mp3_to_wav(mp3_data):
-    """Convert MP3 data to WAV format."""
-    audio = AudioSegment.from_mp3(io.BytesIO(mp3_data))
-    wav_io = io.BytesIO()
-    audio.export(wav_io, format="wav")
-    return wav_io.getvalue()
 
 def is_valid_audio_file(file):
     """Check if the file is a valid audio file."""
@@ -26,14 +18,14 @@ def is_valid_audio_file(file):
         header = file.getvalue()[:12]
         # Check for WAV header
         if header.startswith(b'RIFF') and header[8:12] == b'WAVE':
-            return True, "wav"
+            return True
         # Check for MP3 header
         if header.startswith(b'\xFF\xFB') or header.startswith(b'ID3'):
-            return True, "mp3"
-        return False, None
+            return True
+        return False
     except Exception as e:
         st.error(f"Error validating file: {str(e)}")
-        return False, None
+        return False
 
 def transcribe_audio(audio_data, progress_bar):
     """
@@ -97,8 +89,7 @@ def main():
     uploaded_file = st.file_uploader("Choose an audio file", type=["wav", "mp3"])
 
     if uploaded_file is not None:
-        is_valid, file_type = is_valid_audio_file(uploaded_file)
-        if not is_valid:
+        if not is_valid_audio_file(uploaded_file):
             st.error("The uploaded file does not appear to be a valid audio file.")
             return
 
@@ -108,9 +99,6 @@ def main():
 
             with st.spinner("Transcribing..."):
                 audio_data = uploaded_file.getvalue()
-                if file_type == "mp3":
-                    st.info("Converting MP3 to WAV for better transcription quality...")
-                    audio_data = convert_mp3_to_wav(audio_data)
                 transcription = transcribe_audio(audio_data, progress_bar)
             
             progress_bar.progress(1.0)
