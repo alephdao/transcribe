@@ -6,6 +6,20 @@ from pydub import AudioSegment
 import tempfile
 from dotenv import load_dotenv
 import moviepy.editor as mp
+import subprocess
+
+def check_ffprobe():
+    try:
+        subprocess.run(["ffprobe", "-version"], check=True, capture_output=True)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+if check_ffprobe():
+    print("ffprobe is available")
+else:
+    print("ffprobe is not available")
+
 
 # Load environment variables from .env file
 load_dotenv()
